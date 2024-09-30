@@ -1,3 +1,4 @@
+from hashlib import new
 from . import opgen
 from .graph import Graph
 from .utilities import wildcard
@@ -8,6 +9,31 @@ import sty
 import re
 import z3
 import time
+import os
+
+def read_json(file):
+    import json
+    with open(file, 'r') as fd:
+        return json.load(fd)
+
+def write_json(file, contents):
+    import json
+    with open(file, 'w') as fd:
+        json.dump(contents, fd, indent=2)
+
+def register_statistics(s, check_time):
+    statistics_file = "solver_stats.json"
+    if not os.path.exists(statistics_file):
+        statistics = []
+    else:
+        statistics = read_json(statistics_file)
+    stats = s.statistics()
+    new_stats= {}
+    for k, v in stats:
+        new_stats[k] = v
+    new_stats["rtime"] = check_time
+    statistics.append(new_stats)
+    write_json(statistics_file, statistics)
 
 class MixedSymbol:
     def __init__(self, name, _type=None):
@@ -45,7 +71,7 @@ def check_string_operation(arr):
         elif i.string() is None:
             return False
     return True
-    
+
 
 def solve2(G: Graph, final_objs, initial_objs=None, contains=True):
     time1 = time.time()
@@ -84,7 +110,7 @@ def solve2(G: Graph, final_objs, initial_objs=None, contains=True):
         # in case the sink function's parameter is exactly an exported
         # function's parameter
         symbol(final_obj)
-        
+
         while q:
             head = q.pop(0)
             _contributors = [] # item: (opt, contributor)
@@ -143,7 +169,7 @@ def solve2(G: Graph, final_objs, initial_objs=None, contains=True):
                 else:
                     # print(f'ERROR: {opt[0]} on {cl} does not match any operation!')
                     pass
-            
+
         for targets, rule, literal in G.extra_constraints:
             for target in targets:
                 if type(literal) == str:
@@ -164,7 +190,11 @@ def solve2(G: Graph, final_objs, initial_objs=None, contains=True):
         solver.set(timeout=2000)
         path_results = {}
         try:
-            if solver.check() == z3.unsat:
+            check_start = time.time()
+            sat = solver.check()
+            check_time = time.time() - check_start
+            register_statistics(solver, check_time)
+            if sat == z3.unsat:
                 # print(solver.assertions())
                 yield solver.assertions(), 'failed'
                 continue
@@ -221,7 +251,7 @@ def solve1(G: Graph, final_objs, initial_objs=None, contains=True):
         G.set_node_attr(final_obj, ('code', G.solve_from))
         symbol = {}
         solver = z3.Solver()
-        
+
         q = [final_obj]
         get_symbol(final_obj)
         # visited_objs = set()
